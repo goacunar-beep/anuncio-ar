@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Experiencia AR</title>
+    <!-- Librerías base -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+    <script>
+      // Shader nativo personalizado para remover fondo oscuro/negro
+      AFRAME.registerComponent('video-transparente-negro', {
+        schema: {
+          src: { type: 'selector' },
+          umbral: { type: 'number', default: 0.18 },   // Límite de corte: sube si aún queda halo oscuro (ej. 0.25)
+          suavizado: { type: 'number', default: 0.08 } // Difumina el borde para evitar corte dentado
+        },
+        init: function () {
+          const videoEl = this.data.src;
+          const texture = new THREE.VideoTexture(videoEl);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.format = THREE.RGBAFormat;
+
+          const material = new THREE.ShaderMaterial({
+            uniforms: {
+              uTexture: { value: texture },
+              uUmbral: { value: this.data.umbral },
+              uSuavizado: { value: this.data.suavizado }
+            },
+            vertexShader: `
+              varying vec2 vUv;
+              void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+              uniform sampler2D uTexture;
+              uniform float uUmbral;
+              uniform float uSuavizado;
+              varying vec2 vUv;
+
+              void main() {
+                vec4 texColor = texture2D(uTexture, vUv);
+                
+                // Cálculo de luminosidad perceptual (estándar sRGB)
+                float brillo = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+                
+                // Si el brillo es menor al umbral, el canal alfa cae a 0 (transparente)
+                float alfa = smoothstep(uUmbral, uUmbral + uSuavizado, brillo);
+
+                gl_FragColor = vec4(texColor.rgb, texColor.a * alfa);
+              }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+
+          this.el.getObject3D('mesh').material = material;
+        }
+      });
+    </script>
+
+    <style>
+      body { margin: 0; overflow: hidden; }
+      #pantalla-inicio {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0, 0, 0, 0.88); z-index: 9999;
+        display: flex; flex-direction: column; justify-content: center;
+        align-items: center; color: #ffffff; font-family: sans-serif;
+        text-align: center; padding: 24px; box-sizing: border-box;
+      }
+      #btn-iniciar {
+        margin-top: 24px; padding: 16px 36px; font-size: 18px; font-weight: bold;
+        background-color: #00e676; color: #000000; border: none; border-radius: 50px; cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="pantalla-inicio">
+      <h2 style="margin: 0 0 12px 0;">Experiencia Interactiva</h2>
+      <p style="margin: 0; max-width: 320px; line-height: 1.5;">
+        Presiona el botón para activar la cámara y el sonido, luego apunta al afiche.
+      </p>
+      <button id="btn-iniciar">Iniciar experiencia</button>
+    </div>
+
+    <a-scene 
+      mindar-image="imageTargetSrc: ./targets.mind;" 
+      color-space="sRGB" 
+      renderer="colorManagement: true, physicallyCorrectLights" 
+      vr-mode-ui="enabled: false" 
+      device-orientation-permission-ui="enabled: false">
+      
+      <a-assets>
+        <video 
+          id="video-avatar" 
+          src="./avatar1.mp4" 
+          preload="auto" 
+          loop="true" 
+          crossorigin="anonymous" 
+          playsinline 
+          webkit-playsinline>
+        </video>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0">
+        <!-- Plano 3D con el nuevo componente de transparencia -->
+        <a-plane 
+          position="0 0 0" 
+          height="1.2" 
+          width="0.68" 
+          video-transparente-negro="src: #video-avatar; umbral: 0.18; suavizado: 0.08;">
+        </a-plane>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      const pantallaInicio = document.querySelector('#pantalla-inicio');
+      const btnIniciar = document.querySelector('#btn-iniciar');
+      const video = document.querySelector('#video-avatar');
+      const target = document.querySelector('[mindar-image-target]');
+
+      btnIniciar.addEventListener('click', () => {
+        pantallaInicio.style.display = 'none';
+        video.play();
+        video.pause();
+      });
+
+      target.addEventListener('targetFound', () => {
+        video.play();
+      });
+
+      target.addEventListener('targetLost', () => {
+        video.pause();
+      });
+    </script>
+  </body>
+</html>
