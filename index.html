@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Experiencia AR</title>
+    <!-- Librerías base -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+    <!-- Componente de Chroma Key Shader personalizado para Three.js / A-Frame -->
+    <script>
+      AFRAME.registerComponent('chromakey', {
+        schema: {
+          color: { type: 'color', default: '#04F404' },
+          tolerance: { type: 'number', default: 0.35 }
+        },
+        init: function () {
+          const videoElement = this.el.components.material?.material?.map?.image || document.querySelector(this.el.getAttribute('src'));
+          const texture = new THREE.VideoTexture(videoElement);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+
+          const targetColor = new THREE.Color(this.data.color);
+
+          this.material = new THREE.ShaderMaterial({
+            uniforms: {
+              textureMap: { value: texture },
+              colorToReplace: { value: new THREE.Vector3(targetColor.r, targetColor.g, targetColor.b) },
+              tolerance: { value: this.data.tolerance }
+            },
+            vertexShader: `
+              varying vec2 vUv;
+              void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+              uniform sampler2D textureMap;
+              uniform vec3 colorToReplace;
+              uniform float tolerance;
+              varying vec2 vUv;
+
+              void main() {
+                vec4 pixel = texture2D(textureMap, vUv);
+                // Distancia euclidiana entre el color del pixel y el verde #04F404
+                float dist = distance(pixel.rgb, colorToReplace);
+                
+                // Si la diferencia es menor a la tolerancia, se vuelve transparente
+                if (dist < tolerance) {
+                  discard;
+                } else {
+                  gl_FragColor = pixel;
+                }
+              }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+
+          this.el.getObject3D('mesh').material = this.material;
+        }
+      });
+    </script>
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #pantalla-inicio {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #btn-iniciar {
+        margin-top: 24px;
+        padding: 16px 36px;
+        font-size: 18px;
+        font-weight: bold;
+        background-color: #04F404;
+        color: #000000;
+        border: none;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(4, 244, 4, 0.4);
+      }
+      /* Contenedor del Botón Marley Club al finalizar el video */
+      #contenedor-cta {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9998;
+        display: none; /* Oculto hasta que termina el video */
+        width: 90%;
+        max-width: 320px;
+        text-align: center;
+      }
+      #btn-marley-club {
+        display: block;
+        width: 100%;
+        padding: 16px 20px;
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        background-color: #f7b731; /* Tono cálido / dorado */
+        color: #111111;
+        text-decoration: none;
+        border-radius: 50px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        box-sizing: border-box;
+        animation: pulse 1.8s infinite;
+      }
+      @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.04); }
+        100% { transform: scale(1); }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Pantalla previa para audio context -->
+    <div id="pantalla-inicio">
+      <h2 style="margin: 0 0 12px 0;">Experiencia Interactiva</h2>
+      <p style="margin: 0; max-width: 320px; line-height: 1.5;">
+        Toca el botón para habilitar la cámara y el audio, luego apunta hacia el afiche.
+      </p>
+      <button id="btn-iniciar">Iniciar experiencia</button>
+    </div>
+
+    <!-- Botón CTA Marley Club flotante -->
+    <div id="contenedor-cta">
+      <a id="btn-marley-club" href="https://marleycoffee.cl" target="_blank">
+        Únete al Marley Club
+      </a>
+    </div>
+
+    <!-- Escena AR -->
+    <a-scene 
+      mindar-image="imageTargetSrc: ./targets.mind;" 
+      color-space="sRGB" 
+      renderer="colorManagement: true, physicallyCorrectLights" 
+      vr-mode-ui="enabled: false" 
+      device-orientation-permission-ui="enabled: false">
+      
+      <a-assets>
+        <video 
+          id="video-avatar" 
+          src="./avatar1.mp4" 
+          preload="auto" 
+          loop="false" 
+          crossorigin="anonymous" 
+          playsinline 
+          webkit-playsinline>
+        </video>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0">
+        <!-- Plano con aplicación del shader chromakey en color #04F404 -->
+        <a-plane 
+          id="plano-avatar"
+          src="#video-avatar" 
+          chromakey="color: #04F404; tolerance: 0.35;"
+          position="0 0 0" 
+          height="1.4" 
+          width="0.8"
+          material="transparent: true;">
+        </a-plane>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      const pantallaInicio = document.querySelector('#pantalla-inicio');
+      const btnIniciar = document.querySelector('#btn-iniciar');
+      const video = document.querySelector('#video-avatar');
+      const target = document.querySelector('[mindar-image-target]');
+      const contenedorCta = document.querySelector('#contenedor-cta');
+      const btnMarley = document.querySelector('#btn-marley-club');
+
+      // 1. Activar permisos de audio y video
+      btnIniciar.addEventListener('click', () => {
+        pantallaInicio.style.display = 'none';
+        video.play();
+        video.pause();
+      });
+
+      // 2. Control de reproducción según tracking
+      target.addEventListener('targetFound', () => {
+        if (!video.ended) {
+          video.play();
+        }
+      });
+
+      target.addEventListener('targetLost', () => {
+        video.pause();
+      });
+
+      // 3. Evento: cuando el video termina
+      video.addEventListener('ended', () => {
+        // Muestra el botón para unirse al club sobre la pantalla
+        contenedorCta.style.display = 'block';
+      });
+
+      // Personaliza el link aquí si tienes una URL específica del club
+      btnMarley.addEventListener('click', () => {
+        // Redirige al destino deseado
+        window.open('https://marleycoffee.cl', '_blank');
+      });
+    </script>
+  </body>
+</html>
