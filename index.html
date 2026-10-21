@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Experiencia AR</title>
+    <!-- Librerías base -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #pantalla-inicio {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.94);
+        z-index: 9999999;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #btn-iniciar {
+        margin-top: 24px;
+        padding: 18px 40px;
+        font-size: 19px;
+        font-weight: 800;
+        background-color: #f7b731;
+        color: #000000;
+        border: none;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(247, 183, 49, 0.5);
+      }
+      /* Botón final Marley Club con máxima prioridad visual y táctil */
+      #btn-marley-club {
+        position: fixed !important;
+        bottom: 30px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 88% !important;
+        max-width: 340px !important;
+        padding: 20px 24px !important;
+        font-size: 18px !important;
+        font-weight: 900 !important;
+        letter-spacing: 0.5px !important;
+        text-transform: uppercase !important;
+        background-color: #f7b731 !important;
+        color: #000000 !important;
+        text-align: center !important;
+        text-decoration: none !important;
+        border-radius: 50px !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.9) !important;
+        z-index: 99999999 !important;
+        pointer-events: auto !important;
+        box-sizing: border-box !important;
+        display: none;
+      }
+    </style>
+
+    <script>
+      // 1. CREACIÓN DEL VIDEO POR JAVASCRIPT PURO (Evita que A-Frame le meta loop="true")
+      const vid = document.createElement('video');
+      vid.id = 'video-avatar-manual';
+      vid.src = './avatar1.mp4';
+      vid.crossOrigin = 'anonymous';
+      vid.playsInline = true;
+      vid.setAttribute('playsinline', '');
+      vid.setAttribute('webkit-playsinline', '');
+      vid.loop = false;
+      vid.preload = 'auto';
+
+      let bloqueadoPorFin = false;
+
+      // Componente Shader estricto para el croma #04F404
+      AFRAME.registerComponent('chromakey-video', {
+        init: function () {
+          const texture = new THREE.VideoTexture(vid);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+
+          this.material = new THREE.ShaderMaterial({
+            uniforms: {
+              textureMap: { value: texture }
+            },
+            vertexShader: `
+              varying vec2 vUv;
+              void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+              uniform sampler2D textureMap;
+              varying vec2 vUv;
+
+              void main() {
+                vec4 pixel = texture2D(textureMap, vUv);
+                float r = pixel.r;
+                float g = pixel.g;
+                float b = pixel.b;
+
+                float maxOtros = max(r, b);
+                float diferenciaVerde = g - maxOtros;
+
+                // Solo borra el fondo verde puro #04F404
+                if (g > 0.45 && diferenciaVerde > 0.18) {
+                  discard;
+                } else {
+                  if (diferenciaVerde > 0.05) {
+                    g = maxOtros;
+                  }
+                  gl_FragColor = vec4(r, g, b, pixel.a);
+                }
+              }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide
+          });
+
+          this.el.addEventListener('loaded', () => {
+            this.el.getObject3D('mesh').material = this.material;
+          });
+        }
+      });
+    </script>
+  </head>
+
+  <body>
+    <!-- Pantalla previa -->
+    <div id="pantalla-inicio">
+      <h2 style="margin: 0 0 12px 0;">Experiencia Interactiva</h2>
+      <p style="margin: 0; max-width: 320px; line-height: 1.5;">
+        Toca el botón para habilitar la cámara y el audio, luego apunta hacia el afiche.
+      </p>
+      <button id="btn-iniciar">Iniciar experiencia</button>
+    </div>
+
+    <!-- Botón directo en el body -->
+    <a id="btn-marley-club" href="https://marleycoffee.cl" target="_blank">
+      Únete al Marley Club
+    </a>
+
+    <a-scene 
+      mindar-image="imageTargetSrc: ./targets.mind;" 
+      color-space="sRGB" 
+      renderer="colorManagement: true, physicallyCorrectLights" 
+      vr-mode-ui="enabled: false" 
+      device-orientation-permission-ui="enabled: false">
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0" id="target-nodo">
+        <!-- Plano desbordado sutilmente del afiche -->
+        <a-plane 
+          id="plano-avatar"
+          chromakey-video
+          position="0 0 0.05" 
+          height="1.77" 
+          width="1.0"
+          scale="1.25 1.25 1.25">
+        </a-plane>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      const pantallaInicio = document.querySelector('#pantalla-inicio');
+      const btnIniciar = document.querySelector('#btn-iniciar');
+      const target = document.querySelector('#target-nodo');
+      const btnFinal = document.querySelector('#btn-marley-club');
+
+      let targetEnfocado = false;
+      let tiempoAnterior = 0;
+
+      function detenerDefinitivamente() {
+        if (bloqueadoPorFin) return;
+        bloqueadoPorFin = true;
+
+        // Frena el video
+        vid.pause();
+        
+        // Muestra el botón con visualización forzada
+        btnFinal.style.display = 'block';
+
+        // Anula el método play para que sea imposible que vuelva a arrancar
+        vid.play = function() { return Promise.resolve(); };
+      }
+
+      btnIniciar.addEventListener('click', () => {
+        pantallaInicio.style.display = 'none';
+        
+        // Activa permisos de reproducción multimedia
+        vid.play().then(() => {
+          vid.pause();
+        }).catch(e => console.error(e));
+      });
+
+      target.addEventListener('targetFound', () => {
+        targetEnfocado = true;
+        if (!bloqueadoPorFin) {
+          vid.play().catch(e => console.log(e));
+        }
+      });
+
+      target.addEventListener('targetLost', () => {
+        targetEnfocado = false;
+        if (!bloqueadoPorFin) {
+          vid.pause();
+        }
+      });
+
+      // Escuchador nativo de fin
+      vid.addEventListener('ended', () => {
+        detenerDefinitivamente();
+      });
+
+      // Vigilante de precisión milimétrica por fotograma
+      function chequearFrame() {
+        if (!bloqueadoPorFin) {
+          const t = vid.currentTime;
+          const dur = vid.duration;
+
+          // 1. Detección por salto de bucle (si el video intenta reiniciarse a 0 tras correr)
+          if (tiempoAnterior > 1.0 && t < 0.4) {
+            detenerDefinitivamente();
+            return;
+          }
+
+          // 2. Detección por proximidad al final (a falta de 0.2 segundos)
+          if (dur && !isNaN(dur) && dur > 0 && t >= (dur - 0.25)) {
+            detenerDefinitivamente();
+            return;
+          }
+
+          tiempoAnterior = t;
+        }
+        requestAnimationFrame(chequearFrame);
+      }
+      requestAnimationFrame(chequearFrame);
+    </script>
+  </body>
+</html>
